@@ -5,7 +5,7 @@ date: "6/4/2020"
 output: html_document
 ---
 
-### Vegan tutorial by An Bui (UCSB)
+## Vegan tutorial by An Bui (UCSB)
 
 This is an R Markdown document in which I work through the vegan package tutorial for use in analyzing community data.
 
@@ -43,6 +43,8 @@ site_type <- env %>%
 site_type$sitec <- as.character(site_type$site) # Create character column, otherwise below will not work.
 
 ```
+
+# specnumber()
 
 ## How speciose are my communities?
 
@@ -93,9 +95,12 @@ plot_sppr <- ggplot(sppr_df, aes(x = landtypef, y = value, fill = landtypef)) +
 plot_sppr
 
 ```
+
 *Figure 1. Species Richness across Ecological Landtypes.*
 
-Although number of species did not vary significantly by site, the median (50th percentile) richness in mixed (dry-mesic) and riparian (wet-mesic) sites appeared higher than at dry (dry-arid) sites and the interquartile range (25th to 75th percentile) at mixed and riparian sites was roughly similar. Furthermore, data collected at dry sites displayed a smaller interquartile range with more outliers at particularly speciose sites.
+Although number of species did not vary significantly by site, the median (50th percentile) richness in mixed (dry-mesic) and riparian (wet-mesic) sites appeared higher than at dry (dry-arid) sites and the interquartile range (25th to 75th percentile) at mixed and riparian sites was roughly similar. Furthermore, data collected at dry sites displayed a smaller interquartile range with more outliers at particularly speciose sites. It is worth noting, however, that nearly double the samples were collected from dry sites than at mixed or riparian sites.
+
+# diversity()
 
 ## How diverse are my communities?
 
@@ -163,5 +168,109 @@ plot_shandiv
 
 ```
 
+*Figure 2. Species Diversity across Ecological Landtypes.*
+
+There was no significant difference in species diversity by ecological landtype, and based on the above figure, this makes sense. The mean Shannon diversity indices for all three landtypes are within 0.1 of one another.
+
+# adonis()
+
+## How different are my communities in species composition?
+
+adonis() may be used to run a permANOVA (**per**mutational **M**ultivariate **An**alysis **o**f **Va**riance) to assess differences in community composition based on dissimilarity. Here, the null hypothesis is that the centroids of you groups are equivalent for all groups.
+
+```{r adonis}
+
+bird_perm <- adonis(birds ~ ELT, data = env)
+
+bird_perm
+
+```
+
+These results suggest that bird communities vary significantly by ecological landtype (p = 0.001). In order to represent this data in ordination space, there are a number of possible methods, but we will use PCA (**P**rinciple **C**omponents **A**nalysis). We'll use the rda() function in the vegan package to accomplish this.
+
+```{r rdaplot}
+
+birdPCA <- rda(birds) # Runs a redundancy analysis on the original birds dataset.
+
+birdPCA # Provides results of this analysis.
+
+PCAscores <- scores(birdPCA, display = "sites") %>% 
+  as.data.frame() %>% 
+  rownames_to_column("site") %>% 
+  full_join(site_type, by = c("site" = "sitec")) # Creates dataset of analysis results.
+
+PCAvect <- scores(birdPCA, display = "species") %>% 
+  as.data.frame() # Creates dataset of vector values for each species.
+
+PCAscores$landtypef <- factor(PCAscores$landtype, levels = c( "do", "dm", "wm")) # Adds in new column for landtype as a leveled factor.
+
+plot_PCA <- ggplot() +
+  geom_point(data = PCAscores, aes(x = PC1, y = PC2, color = landtypef)) +
+  scale_color_manual(values = pal) +
+  geom_vline(xintercept = c(0), color = "grey70", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey70", linetype = 2) +
+  geom_segment(data = PCAvect, aes(x = 0, y = 0, xend = PC1, yend = PC2), arrow = arrow(length = unit(0.2, "cm"))) +
+  geom_text(data = PCAvect, aes(x = PC1, y = PC2, label = rownames(PCAvect))) +
+  clean_background +
+  labs(x = "PC1 (23.57%)",
+       y = "PC2 (12.23%)",
+       title = "Principal Components Analysis") 
+
+plot_PCA
+
+```
+
+*Figure 3. Community Composition by Ecological Landtype Using ggplot2.*
+
+Each point in the above figure is a site, colored by landtype, and each arrow is a bird species. The length of the arrow indicates the amount of variation in your communities explained by that particular variable (longer = larger), and the angle of the arrows relative to one another indicates the amount they correlate with one another (more obtuse = less correlated).
+
+Another option is to plot this same figure using the ggvegan package.
+
+```{r autoplot}
+
+PCA_biplot <- autoplot(birdPCA) # Creates the plot.
+
+PCA_biplot # Output of same, but less customized, figure 3.
+
+```
+
+
+*Figure 4. Community Composition across All Sites Sampled.*
+
+And we can use the fortify() function to better customize and replicate Figure 3 within the ggvegan package.
+
+```{r fortify}
+
+PCA_fortify <- fortify(birdPCA) # This provides results in a dataframe.
+
+PCA_fort_sites <- PCA_fortify %>% 
+  filter(Score == "sites") %>% 
+  full_join(., site_type, by = c("Label" = "sitec")) # This extracts the results of the PCA only for the sampling sites and joins it with the dataframe containing landtypes.
+
+PCA_fort_species <- PCA_fortify %>% 
+  filter(Score == "species") # This extracts the results for the PCA only for the species (so the vectors).
+
+PCA_fort_sites$landtypef <- factor(PCA_fort_sites$landtype, levels = c( "do", "dm", "wm")) # Adds in new column for landtype as a leveled factor.
+
+PCA_fortify_plot <- ggplot() +
+  geom_point(data = PCA_fort_sites, aes(x = PC1, y = PC2, col = landtypef)) +
+  geom_vline(xintercept = c(0), color = "grey70", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey70", linetype = 2) +
+  scale_color_manual(values = c("lightsalmon1", "tan4", "springgreen3")) +
+  geom_segment(data = PCA_fort_species, aes(x = 0, xend = PC1, y = 0, yend = PC2), 
+               arrow = arrow(length = unit(0.2, "cm"))) +
+  geom_text(data = PCA_fort_species, aes(x = PC1, y = PC2, label = Label)) +
+  clean_background +
+  labs(x = "PC1 (23.57%)",
+       y = "PC2 (12.23%)",
+       title = "Principal Components Analysis - using fortify()") # This creates the plot.
+
+PCA_fortify_plot # And this prints the plot to mimic figure 3.
+
+```
+
+*Figure 5. Community Composition by Ecological Landtype Using ggvegan.*
+
+Now, yet another technique you may use is NMDS (*N*on-metric *M*ulti*d*imensional *S*caling).
 
 End of R Markdown script.
