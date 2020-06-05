@@ -37,8 +37,8 @@ env <- read.csv("bta_snm_vfield.csv") # Environmental variables.
 # This data is sites (X), stem density or # per hectare (all_stem_dens),  large stem basal area (big_stem_bas), percent canopy cover (can_cov_meas), mean canopy height (can_heig_mea), and ecological landtype (ELT).
 
 site_type <- env %>% 
-  select(X, ELT) %>% # Sets up metadata dataframe for use later.
-  rename(site = X, landtype = ELT)
+  select(X, ELT) %>% 
+  rename(site = X, landtype = ELT) # Sets up metadata dataframe with new columns names for use later.
 
 site_type$sitec <- as.character(site_type$site) # Create character column, otherwise below will not work.
 
@@ -70,9 +70,11 @@ sppr_df <- sppr %>%
   enframe() %>% 
   full_join(site_type, by = c("name" = "sitec")) # "name" refers to the hidden column of characters numbering each of the sppr dataset values.
 
+sppr_df$landtypef <- factor(sppr_df$landtype, levels = c( "do", "dm", "wm")) # Adds in new column for landtype as a leveled factor.
+
 pal <- c("lightsalmon1", "tan4", "springgreen3")
 
-plot_sppr <- ggplot(sppr_df, aes(x = landtype, y = value, fill = landtype)) +
+plot_sppr <- ggplot(sppr_df, aes(x = landtypef, y = value, fill = landtypef)) +
   geom_boxplot() +
   scale_fill_manual(values = pal) +
   scale_x_discrete(labels = c("dry \n (n = 96)", "mix \n (n = 59)", "riparian \n (n = 55)")) +
@@ -89,6 +91,75 @@ plot_sppr <- ggplot(sppr_df, aes(x = landtype, y = value, fill = landtype)) +
        title = "Species richness")
 
 plot_sppr
+
+```
+*Figure 1. Species Richness across Ecological Landtypes.*
+
+Although number of species did not vary significantly by site, the median (50th percentile) richness in mixed (dry-mesic) and riparian (wet-mesic) sites appeared higher than at dry (dry-arid) sites and the interquartile range (25th to 75th percentile) at mixed and riparian sites was roughly similar. Furthermore, data collected at dry sites displayed a smaller interquartile range with more outliers at particularly speciose sites.
+
+## How diverse are my communities?
+
+diversity() may calculate Shannon, Simpson, and Fisher's alpha. Here, we will specify Shannon, which takes into account species abundance and evenness. You can then run an analysis of variance to ask if mean species diversity is significantly different by landtype.
+
+```{r diversity}
+
+shannondiv <- diversity(birds) # Calculate Shannon diversity, the default for the index input.
+
+head(shannondiv) # Display the first row of data.
+
+sppdiv_aov <- aov(shannondiv ~ landtype, data = site_type) # Run the anova by landtype.
+
+summary(sppdiv_aov) # Display anova results.
+
+```
+
+Again, there is no significant difference in bird species diversity (Shannon index) by ecological landtype (p = 0.06). But let's plot this out.
+
+```{r divplot}
+
+shandiv_df <- shannondiv %>% 
+  # put all those calculations into a data frame
+  enframe() %>% 
+  # rename columns for ease of joining
+  rename(site = name,
+         shan_div = value)
+
+div_plot_df <- shandiv_df %>% 
+  # join with site_type
+  full_join(site_type, ., by = c("sitec" = "site")) %>% 
+  # group by landtype
+  group_by(landtype) %>% 
+  # calculate mean and standard error of diversity
+  summarize(mean = round(mean(shan_div), 2),
+            err = sd(shan_div)/sqrt(length(shan_div))) %>% 
+  dplyr::mutate(label = "mean") %>% 
+  unite("mean_label", label, mean, sep = " = ", remove = FALSE)
+
+div_plot_df$landtypef <- factor(div_plot_df$landtype, levels = c( "do", "dm", "wm")) # Adds in new column for landtype as a leveled factor.
+
+clean_background <- theme(plot.background = element_rect("white"),
+        panel.background = element_rect("white"),
+        panel.grid = element_line("white"),
+        axis.line = element_line("gray25"),
+        axis.text = element_text(size = 12, color = "gray25"),
+        axis.title = element_text(color = "gray25"),
+        legend.text = element_text(size = 12),
+        legend.key = element_rect("white"))
+
+plot_shandiv <- ggplot(div_plot_df, aes(x = landtypef, y = mean, fill = landtypef)) +
+  geom_col(color = "black") +
+  scale_fill_manual(values = pal) +
+  geom_errorbar(aes(ymin = mean - err, ymax = mean + err), width = 0.5) +
+  geom_text(aes(x = landtype, y = mean + err + 0.07, label = mean_label)) +
+  scale_x_discrete(labels = c("dry \n (n = 96)", "mix \n (n = 59)", "riparian \n (n = 55)")) +
+  scale_y_continuous(limits = c(0, 2.75), expand = c(0,0)) +
+  clean_background + 
+  theme(legend.position = "none") +
+  labs(x = "Ecological landtype",
+       y = "Mean Shannon diversity",
+       title = "Shannon diversity")
+
+plot_shandiv
 
 ```
 
