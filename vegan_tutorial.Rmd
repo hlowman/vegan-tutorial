@@ -271,6 +271,91 @@ PCA_fortify_plot # And this prints the plot to mimic figure 3.
 
 *Figure 5. Community Composition by Ecological Landtype Using ggvegan.*
 
-Now, yet another technique you may use is NMDS (*N*on-metric *M*ulti*d*imensional *S*caling).
+Now, yet another technique you may use is NMDS (*N*on-metric *M*ulti*d*imensional *S*caling), which allows you to collapse all species axes into 2 to plot in cartesian space and visualize the differences between samples and sites using metaMDS().
+
+```{r metamds}
+
+bird_NMDS <- metaMDS(birds) # Runs the NMDS analysis.
+
+bird_NMDS # Presents summary of NMDS results.
+
+stressplot(bird_NMDS) # For evaluating how well ordination represented data complexity.
+
+```
+
+*Figure 6. Stressplot of NMDS Results.*
+
+The above figure shows how closely ordination along the y-axis represents dissimilarities along the  x-axis. Each point is a community, and their distance from the line represents the "stress," or how they are pulled from their original position to be represented in their ordination.
+
+**Rule of thumb: High stress is bad, low stress is good.** NMDS stress will increase as sample size increases, but *generally* speaking values above 0.2 aren't great and suggest that the ordination didn't do a god job of representing community structure. (< 0.05 is excellent, < 0.1 is great, < 0.2 is good.) See An's original tutorial (https://rpubs.com/an-bui/vegan-cheat-sheet) for more exploration of this.
+
+```{r nmdsplot}
+
+plot(bird_NMDS) # Creates base R plot of results.
+
+```
+
+*Figure 7. Base R Plot of NMDS Results.*
+
+```{r nmdsggplot}
+
+plot_df <- scores(bird_NMDS, display = "sites") %>% 
+  as.data.frame() %>% 
+  rownames_to_column("site") %>% 
+  full_join(site_type, by = c("site" = "sitec")) # Creates extracted dataset from NMDS analysis.
+
+plot_df$landtypef <- factor(plot_df$landtype, levels = c( "do", "dm", "wm")) # Adds in new column for landtype as a leveled factor.
+
+plot_nmds <- ggplot(plot_df, aes(x = NMDS1, y = NMDS2, color = landtypef, shape = landtypef)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = pal) +
+  stat_ellipse(linetype = 2, size = 1) +
+  clean_background +
+  labs(title = "NMDS") # Creates plot with ellipses to denote 95% confidence intervals fitted into the spatial ordination.
+
+plot_nmds
+
+```
+
+*Figure 8. Ggplot of NMDS Results.*
+
+You can also create this same plot with vectors for each species added in to see how they contribute to relative differences in community composition.
+
+```{r envfitplot}
+
+fit <- envfit(bird_NMDS, birds, perm = 999) # Creates new dataset of NMDS results + species matrix.
+
+fit_pvals <- fit$vectors$pvals %>% 
+  as.data.frame() %>% 
+  rownames_to_column("species") %>% 
+  dplyr::rename("pvals" = ".") # Extracts p-value for each species.
+
+fit_spp <- fit %>% 
+  scores(., display = "vectors") %>% 
+  as.data.frame() %>% 
+  rownames_to_column("species") %>% 
+  full_join(., fit_pvals, by = "species") %>% 
+  filter(pvals == 0.001) # Extracts vector coordinates for each species, but then only keeps in species with p = 0.001.
+
+nmds_plot_new <- ggplot(plot_df, aes(x = NMDS1, y = NMDS2)) +
+  coord_fixed() +
+  geom_point(aes(color = landtypef, shape = landtypef), size = 3, alpha = 0.8) +
+  stat_ellipse(aes(color = landtype)) +
+  scale_color_manual(values = pal) +
+  geom_segment(data = fit_spp, aes(x = 0, xend = NMDS1, y = 0, yend = NMDS2),
+               arrow = arrow(length = unit(0.25, "cm")),
+               col = "black") +
+  geom_text(data = fit_spp, aes(label = species)) +
+  clean_background # Creates new biplot.
+
+nmds_plot_new
+
+```
+
+*Figure 9. NMDS Results with Species Vectors.*
+
+# cca()
+
+## How is community structure related to specific environmental variables?
 
 End of R Markdown script.
