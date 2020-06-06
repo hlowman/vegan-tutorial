@@ -1,27 +1,20 @@
 ---
-title: "Write-up of vegan Tutorial"
-author: "hlowman"
+title: "Write-up of *vegan* Tutorial"
+author: "Heili Lowman"
 date: "6/4/2020"
 output: html_document
 ---
 
-## Vegan tutorial by An Bui (UCSB)
+# Vegan tutorial adapted from An Bui (EEMB, UCSB)
 
-This is an R Markdown document in which I work through the vegan package tutorial for use in analyzing community data.
+This is an R Markdown document in which I work through the *vegan* package tutorial for use in analyzing community data.
 
 First, I will load the necessary packages and data:
 
 ```{r setup}
 
 # Load libraries.
-#library(tidyverse) # Loads the tidyverse, including ggplot2.
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(purrr)
-library(readr)
-library(tibble)
-library(stringr)
+library(tidyverse) # Loads the tidyverse, including ggplot2.
 library(forcats) # Loading these until I can get the tidyverse working...
 library(vegan) # Loads the vegan package, which we will be exploring.
 library(ggvegan) # Loads package to facilitate plotting from vegan in ggplot2.
@@ -357,5 +350,60 @@ nmds_plot_new
 # cca()
 
 ## How is community structure related to specific environmental variables?
+
+All of the above examples are *unconstrained* ordination, which means that the ordination is done only considering species counts in the site * species matrix. However, *constrained* ordination is appropriate for when there is a matrix of communities (site * species) and another matrix of environmental characteristics (site * environment), which in this case is the env dataframe we've already loaded in.
+
+*Constrained* ordination allows us to ask how environmental variables relate to community composition - here we will use CCA (**C**anonical **C**orresnpondence **A**nalysis) to examine the effects of canopy height, stems per hectare, and big stem diameter on bird community structure.
+
+```{r cca}
+
+birdCCA <- cca(birds ~ can_heig_mea + all_stem_den + big_stem_bas, data = env) # Runs the CCA analysis.
+
+birdCCA # Reports the results.
+
+ccaplot <- plot(birdCCA) # Plots the results in base R.
+
+```
+
+*Figure 10. Base R Plot of CCA Results.*
+
+And we can again extract this data to create a more customized plot in ggplot.
+
+```{r ggcca}
+
+ccavectors <- as.matrix(scores(birdCCA, display = "bp", scaling = "species")*12.2) %>% 
+  as.data.frame() # Pulls out environmental factors as vector data.
+
+site_data <- scores(birdCCA, display = "sites") %>% 
+  as.data.frame() %>% 
+  rownames_to_column("site") %>% 
+  full_join(site_type, by = c("site" = "sitec")) # Joins together CCA results with environmental dataframe.
+
+site_data$landtypef <- factor(site_data$landtype, levels = c( "do", "dm", "wm")) # Adds in new column for landtype as a leveled factor.
+
+species_data <- scores(birdCCA, display = "species") %>% 
+  as.data.frame() # Pulls out bird community data by site.
+
+plot_cca <- ggplot(site_data) +
+  geom_point(aes(x = CCA1, y = CCA2, color = landtypef), shape = 19, size = 2, alpha = 0.8) +
+  coord_fixed() +
+  scale_color_manual(values = pal) +
+  geom_segment(data = ccavectors, aes(x = 0, y = 0, xend = CCA1, yend = CCA2), arrow = arrow(length = unit(0.2, "cm"))) +
+  geom_vline(xintercept = c(0), color = "grey70", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey70", linetype = 2) +
+  geom_point(data = species_data, aes(x = CCA1, y = CCA2), shape = 17, size = 2, color = "slateblue") +
+  scale_x_continuous(limits = c(-12, 10)) +
+  scale_y_continuous(limits = c(-3, 12)) +
+  geom_text(data = ccavectors, aes(x = CCA1, y = CCA2, label = rownames(ccavectors)), nudge_x = 0.3, nudge_y = 0.3) +
+  clean_background +
+  labs(title = "Canonical Correspondence Analysis")
+
+plot_cca
+
+```
+
+*Figure 11. Ggplot of CCA Results.*
+
+NEED TO INSERT FINAL INTERPRETATION OF FIGURE 11 HERE.
 
 End of R Markdown script.
